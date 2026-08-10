@@ -1,0 +1,19 @@
+# Sensitive files
+credentials.json
+token.pickle
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Editor temporary files
+*~
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db
