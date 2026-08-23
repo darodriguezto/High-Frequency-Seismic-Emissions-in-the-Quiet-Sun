@@ -19,5 +19,5 @@ __pycache__/
 Thumbs.db
 
 # Large local data cubes
-data/cubes/
+data/2018_08_25/cubes/
 
