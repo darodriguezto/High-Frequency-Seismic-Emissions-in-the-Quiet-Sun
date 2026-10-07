@@ -57,7 +57,6 @@ def detect_magnetic_regions(mag_frame, percentile=80, crop=(150, 845)):
     # Compute threshold using finite values only
     finite_values = abs_mag[np.isfinite(abs_mag)]
     threshold = np.percentile(finite_values, percentile)
-    print('Magnetic threshold: ', threshold)
     # Magnetic-field mask
     mag_mask = (
         np.isfinite(abs_mag) &
@@ -89,8 +88,9 @@ def detect_magnetic_regions(mag_frame, percentile=80, crop=(150, 845)):
             "x_center": x_center,
             "y_center": y_center,
             "area_pixels": area_pixels,
-            "r_equivalent_pixels": r_equivalent
-        })
+            "r_equivalent_pixels": r_equivalent,
+            #"mask": region_mask
+            })
         # Equivalent-radius statistics
     if regions:
         equivalent_radii = np.array([
@@ -100,6 +100,7 @@ def detect_magnetic_regions(mag_frame, percentile=80, crop=(150, 845)):
         max_radius = np.max(equivalent_radii)
         mean_radius = np.mean(equivalent_radii)
         std_radius = np.std(equivalent_radii)
+        print(f"Magnetic threshold: {threshold:.2f}")
         print(f"Number of detected regions: {len(regions)}")
         print(f"Maximum equivalent radius: {max_radius:.2f} pixels")
         print(f"Mean equivalent radius: {mean_radius:.2f} pixels")
@@ -109,24 +110,106 @@ def detect_magnetic_regions(mag_frame, percentile=80, crop=(150, 845)):
     return regions, labeled_regions, mag_mask, threshold
 
 
-def filter_regions_by_radius(regions, min_radius=5):
+def filter_regions_by_radius(
+    regions,
+    labeled_regions,
+    mag_frame,
+    min_radius=5
+):
     """
-    Filter detected regions by equivalent radius.
+    Filter detected regions by equivalent radius and compute
+    magnetic-field statistics inside the original region and
+    its equivalent circle.
 
     Parameters
     ----------
     regions : list of dict
         Detected magnetic regions.
+    labeled_regions : np.ndarray
+        Labeled array containing all connected regions.
+    mag_frame : np.ndarray
+        2D magnetogram used for the region detection.
     min_radius : float, optional
         Minimum equivalent radius in pixels.
 
     Returns
     -------
     selected_regions : list of dict
-        Regions satisfying the radius criterion.
+        Selected regions including masks and magnetic-field statistics.
     """
-    selected_regions = [
-        region for region in regions
-        if region["r_equivalent_pixels"] >= min_radius
-    ]
+
+    selected_regions = []
+
+    # Pixel-coordinate arrays
+    y, x = np.indices(mag_frame.shape)
+
+    for region in regions:
+
+        if region["r_equivalent_pixels"] >= min_radius:
+
+            label = region["label"]
+            x_center = region["x_center"]
+            y_center = region["y_center"]
+            radius = region["r_equivalent_pixels"]
+
+            # ----------------------------------------------------------
+            # Original-region mask
+            # ----------------------------------------------------------
+
+            region_mask = labeled_regions == label
+
+            # ----------------------------------------------------------
+            # Equivalent-circle mask
+            # ----------------------------------------------------------
+
+            circle_mask = (
+                (x - x_center)**2 +
+                (y - y_center)**2
+                <= radius**2
+            )
+
+            # ----------------------------------------------------------
+            # Magnetic-field values inside the original region
+            # ----------------------------------------------------------
+
+            mag_mask_values = mag_frame[
+                region_mask & np.isfinite(mag_frame)
+            ]
+
+            mean_mag_mask = np.mean(mag_mask_values)
+            std_mag_mask = np.std(mag_mask_values)
+
+            # ----------------------------------------------------------
+            # Magnetic-field values inside the equivalent circle
+            # ----------------------------------------------------------
+
+            mag_circle_values = mag_frame[
+                circle_mask & np.isfinite(mag_frame)
+            ]
+
+            mean_mag_circle = np.mean(mag_circle_values)
+            std_mag_circle = np.std(mag_circle_values)
+
+            # ----------------------------------------------------------
+            # Store selected-region information
+            # ----------------------------------------------------------
+
+            selected_region = region.copy()
+
+            selected_region.update({
+                "mask": region_mask,
+                "circle_mask": circle_mask,
+                "mean_magnetic_strength_mask": mean_mag_mask,
+                "std_magnetic_strength_mask": std_mag_mask,
+                "mean_magnetic_strength_circle": mean_mag_circle,
+                "std_magnetic_strength_circle": std_mag_circle
+            })
+
+            selected_regions.append(selected_region)
+
+    print(
+        f"Selected regions (r >= {min_radius} px): "
+        f"{len(selected_regions)}"
+    )
+
     return selected_regions
